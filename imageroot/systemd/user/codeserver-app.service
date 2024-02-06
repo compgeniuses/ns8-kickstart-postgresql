@@ -1,0 +1,38 @@
+#
+# Copyright (C) 2022 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+[Unit]
+Description=Podman  codeserver-app.service
+BindsTo=coder.service
+After=coder.service postgresql-app.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+EnvironmentFile=-%S/state/smarthost.env
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/mkdir -p config
+ExecStartPre=/bin/rm -f %t/codeserver-app.pid %t/codeserver-app.ctr-id
+ExecStartPre=-runagent discover-smarthost
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/codeserver-app.pid \
+    --cidfile %t/codeserver-app.ctr-id --cgroups=no-conmon \
+    --pod-id-file %t/coder.pod-id --replace -d --name  codeserver-app \
+    --volume $HOME/.local:/home/coder/.local \
+    --volume $HOME/.config:/home/coder/.config \
+    --volume $PWD:/home/coder/project \
+    --env=CODESERVER_* \
+    --env=DOCKER_USER=$USER \
+    ${CODE_SERVER_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/codeserver-app.ctr-id -t 10
+ExecReload=/usr/bin/podman kill -s HUP codeserver-app
+SyslogIdentifier=%u
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/codeserver-app.ctr-id
+PIDFile=%t/codeserver-app.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

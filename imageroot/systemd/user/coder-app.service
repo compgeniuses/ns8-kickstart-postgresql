@@ -1,0 +1,40 @@
+#
+# Copyright (C) 2022 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+[Unit]
+Description=Podman  coder-app.service
+BindsTo=coder.service
+After=coder.service postgresql-app.service codeserver-app.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+EnvironmentFile=-%S/state/smarthost.env
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/mkdir -p config
+ExecStartPre=/bin/rm -f %t/coder-app.pid %t/coder-app.ctr-id
+ExecStartPre=-runagent discover-smarthost
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/coder-app.pid \
+    --cidfile %t/coder-app.ctr-id --cgroups=no-conmon \
+    --pod-id-file %t/coder.pod-id --replace -d --name  coder-app \
+    --volume coder-app:/var/www/html/:Z \
+    --volume ./config:/tmp:Z \
+    --volume ./var/run/docker.sock:/var/run/docker.sock \
+    --env=NGINX_* \
+    --env=CODER_HTTP_ADDRESSL=0.0.0.0:7080 \
+    --env=CODER_ACCESS_URL=${CODER_ACCESS_UR} \
+    --env 'CODER_PG_CONNECTION_URL="postgresql://coder:Nethesis,1234@127.0.0.1:5432/coder"' \
+    ${CODER_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/coder-app.ctr-id -t 10
+ExecReload=/usr/bin/podman kill -s HUP coder-app
+SyslogIdentifier=%u
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/coder-app.ctr-id
+PIDFile=%t/coder-app.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

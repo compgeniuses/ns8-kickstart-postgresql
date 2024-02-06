@@ -1,0 +1,35 @@
+#
+# Copyright (C) 2022 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# This systemd unit starts a coder instance using Podman.
+# Most parts of this file come from podman-generate-systemd.
+#
+
+[Unit]
+Description=Podman coder.service
+Requires=postgresql-app.service coder-app.service codeserver-app.service
+Before=postgresql-app.service coder-app.service codeserver-app.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=-%S/state/environment
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/rm -f %t/coder.pid %t/coder.pod-id
+ExecStartPre=/usr/bin/podman pod create --infra-conmon-pidfile %t/coder.pid \
+    --pod-id-file %t/coder.pod-id \
+    --name coder \
+    --publish 127.0.0.1:${TCP_PORT_CODER}:7080 \
+    --publish 127.0.0.1:${TCP_PORT_CODESERVER}:8080 \
+    --replace
+ExecStart=/usr/bin/podman pod start --pod-id-file %t/coder.pod-id
+ExecStop=/usr/bin/podman pod stop --ignore --pod-id-file %t/coder.pod-id -t 10
+ExecStopPost=/usr/bin/podman pod rm --ignore -f --pod-id-file %t/coder.pod-id
+PIDFile=%t/coder.pid
+Type=forking
+
+[Install]
+WantedBy=default.target
